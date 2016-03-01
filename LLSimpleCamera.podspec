@@ -15,7 +15,7 @@ hides the nitty gritty details from the developer
   s.license      = { :type => 'APACHE', :file => 'LICENSE' }
   s.author       = { "Ömer Faruk Gül" => "omergul123@gmail.com" }
   s.platform     = :ios,'7.0'
-  s.source       = { :git => "https://github.com/kevinnguy/RQShineLabel.git", :tag => :master }
+  s.source       = { :git => "https://github.com/kevinnguy/LLSimpleCamera.git", :tag => :master }
   s.source_files  = 'LLSimpleCamera/*.{h,m}'
   s.requires_arc = true
   s.framework = 'AVFoundation'
