@@ -11,11 +11,11 @@ handles the position and flash of the camera
 hides the nitty gritty details from the developer
                    DESC
 
-  s.homepage     = "https://github.com/omergul123/LLSimpleCamera"
+  s.homepage     = "https://github.com/kevinnguy/LLSimpleCamera"
   s.license      = { :type => 'APACHE', :file => 'LICENSE' }
   s.author       = { "Ömer Faruk Gül" => "omergul123@gmail.com" }
   s.platform     = :ios,'7.0'
-  s.source       = { :git => "https://github.com/omergul123/LLSimpleCamera.git", :tag => "v4.2.0" }
+  s.source       = { :git => "https://github.com/kevinnguy/RQShineLabel.git", :tag => :master }
   s.source_files  = 'LLSimpleCamera/*.{h,m}'
   s.requires_arc = true
   s.framework = 'AVFoundation'
