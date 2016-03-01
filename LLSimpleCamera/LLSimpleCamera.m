@@ -10,7 +10,7 @@
 #import <ImageIO/CGImageProperties.h>
 #import "UIImage+FixOrientation.h"
 
-@interface LLSimpleCamera () <AVCaptureFileOutputRecordingDelegate, UIGestureRecognizerDelegate>
+@interface LLSimpleCamera () <AVCaptureFileOutputRecordingDelegate, UIGestureRecognizerDelegate, AVCaptureMetadataOutputObjectsDelegate>
 @property (strong, nonatomic) UIView *preview;
 @property (strong, nonatomic) AVCaptureStillImageOutput *stillImageOutput;
 @property (strong, nonatomic) AVCaptureSession *session;
@@ -27,6 +27,31 @@
 @property (nonatomic, assign) CGFloat beginGestureScale;
 @property (nonatomic, assign) CGFloat effectiveScale;
 @property (nonatomic, copy) void (^didRecord)(LLSimpleCamera *camera, NSURL *outputFileUrl, NSError *error);
+
+/*
+ @property captureDeviceOnput
+ @abstract
+ The capture device output for capturing video.
+ */
+@property (nonatomic, strong) AVCaptureMetadataOutput *captureOutput;
+
+/**
+ *  If set, only barcodes inside this area will be scanned.
+ */
+@property (nonatomic, assign) CGRect scanRect;
+
+/*!
+ @property resultBlock
+ @abstract
+ Block that's called for every barcode captured. Returns an array of AVMetadataMachineReadableCodeObjects.
+ 
+ @discussion
+ The resultBlock is called once for every frame that at least one valid barcode is found.
+ The returned array consists of AVMetadataMachineReadableCodeObject objects.
+ This block is automatically set when you call startScanningWithResultBlock:
+ */
+@property (nonatomic, copy) void (^scanningResultBlock)(NSArray *codes);
+
 @end
 
 NSString *const LLSimpleCameraErrorDomain = @"LLSimpleCameraErrorDomain";
@@ -164,25 +189,7 @@ NSString *const LLSimpleCameraErrorDomain = @"LLSimpleCameraErrorDomain";
 {
     [LLSimpleCamera requestCameraPermission:^(BOOL granted) {
         if(granted) {
-            // request microphone permission if video is enabled
-            if(self.videoEnabled) {
-                [LLSimpleCamera requestMicrophonePermission:^(BOOL granted) {
-                    if(granted) {
-                        [self initialize];
-                    }
-                    else {
-                        NSError *error = [NSError errorWithDomain:LLSimpleCameraErrorDomain
-                                                             code:LLSimpleCameraErrorCodeMicrophonePermission
-                                                         userInfo:nil];
-                        if(self.onError) {
-                            self.onError(self, error);
-                        }
-                    }
-                }];
-            }
-            else {
-                [self initialize];
-            }
+            [self initialize];
         }
         else {
             NSError *error = [NSError errorWithDomain:LLSimpleCameraErrorDomain
@@ -200,6 +207,7 @@ NSString *const LLSimpleCameraErrorDomain = @"LLSimpleCameraErrorDomain";
     if(!_session) {
         _session = [[AVCaptureSession alloc] init];
         _session.sessionPreset = self.cameraQuality;
+        
         
         // preview layer
         CGRect bounds = self.preview.layer.bounds;
@@ -255,7 +263,7 @@ NSString *const LLSimpleCameraErrorDomain = @"LLSimpleCameraErrorDomain";
         
         // add audio if video is enabled
         if(self.videoEnabled) {
-            _audioCaptureDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
+            _audioCaptureDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
             _audioDeviceInput = [AVCaptureDeviceInput deviceInputWithDevice:_audioCaptureDevice error:&error];
             if (!_audioDeviceInput) {
                 if(self.onError) {
@@ -272,6 +280,29 @@ NSString *const LLSimpleCameraErrorDomain = @"LLSimpleCameraErrorDomain";
             if([self.session canAddOutput:_movieFileOutput]) {
                 [self.session addOutput:_movieFileOutput];
             }
+            
+            self.captureOutput = [[AVCaptureMetadataOutput alloc] init];
+            [_session addOutput:self.captureOutput];
+            [self.captureOutput setMetadataObjectsDelegate:self queue:dispatch_get_main_queue()];
+            
+            NSMutableArray *types = [@[AVMetadataObjectTypeQRCode,
+                                       AVMetadataObjectTypeUPCECode,
+                                       AVMetadataObjectTypeCode39Code,
+                                       AVMetadataObjectTypeCode39Mod43Code,
+                                       AVMetadataObjectTypeEAN13Code,
+                                       AVMetadataObjectTypeEAN8Code,
+                                       AVMetadataObjectTypeCode93Code,
+                                       AVMetadataObjectTypeCode128Code,
+                                       AVMetadataObjectTypePDF417Code,
+                                       AVMetadataObjectTypeAztecCode] mutableCopy];
+            
+            if (floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_7_1) {
+                [types addObjectsFromArray:@[AVMetadataObjectTypeInterleaved2of5Code,
+                                             AVMetadataObjectTypeITF14Code,
+                                             AVMetadataObjectTypeDataMatrixCode
+                                             ]];
+            }
+            self.captureOutput.metadataObjectTypes = types;
         }
         
         // continiously adjust white balance
@@ -297,6 +328,74 @@ NSString *const LLSimpleCameraErrorDomain = @"LLSimpleCameraErrorDomain";
     [self.session stopRunning];
 }
 
+- (void)startScanningWithScanRect:(CGRect)scanRect resultBlock:(void (^)(NSArray *))resultBlock {
+    self.scanRect = scanRect;
+    
+    // Configure the rect of interest
+    self.captureOutput.rectOfInterest = [self rectOfInterestFromScanRect:self.scanRect];
+    
+    // Configure the preview layer
+    self.captureVideoPreviewLayer.cornerRadius = self.preview.layer.cornerRadius;
+    [self.preview.layer insertSublayer:self.captureVideoPreviewLayer atIndex:0]; // Insert below all other views
+    UIInterfaceOrientation orientation = [UIApplication sharedApplication].statusBarOrientation;
+    self.captureVideoPreviewLayer.frame = self.preview.bounds;
+    if ([self.captureVideoPreviewLayer.connection isVideoOrientationSupported]) {
+        self.captureVideoPreviewLayer.connection.videoOrientation = [self captureOrientationForInterfaceOrientation:orientation];
+    }
+    
+    self.scanningResultBlock = resultBlock;
+}
+
+- (void)setScanRect:(CGRect)scanRect {
+    UIInterfaceOrientation orientation = [UIApplication sharedApplication].statusBarOrientation;
+    self.captureVideoPreviewLayer.frame = self.preview.bounds;
+    if ([self.captureVideoPreviewLayer.connection isVideoOrientationSupported]) {
+        self.captureVideoPreviewLayer.connection.videoOrientation = [self captureOrientationForInterfaceOrientation:orientation];
+    }
+    _scanRect = scanRect;
+    self.captureOutput.rectOfInterest = [self.captureVideoPreviewLayer metadataOutputRectOfInterestForRect:_scanRect];
+}
+
+- (AVCaptureVideoOrientation)captureOrientationForInterfaceOrientation:(UIInterfaceOrientation)interfaceOrientation {
+    switch (interfaceOrientation) {
+        case UIInterfaceOrientationPortrait:
+            return AVCaptureVideoOrientationPortrait;
+        case UIInterfaceOrientationPortraitUpsideDown:
+            return AVCaptureVideoOrientationPortraitUpsideDown;
+        case UIInterfaceOrientationLandscapeLeft:
+            return AVCaptureVideoOrientationLandscapeLeft;
+        case UIInterfaceOrientationLandscapeRight:
+            return AVCaptureVideoOrientationLandscapeRight;
+        default:
+            return AVCaptureVideoOrientationPortrait;
+    }
+}
+
+- (CGRect)rectOfInterestFromScanRect:(CGRect)scanRect {
+    CGRect rect = CGRectZero;
+    if (!CGRectIsEmpty(self.scanRect)) {
+        rect = [self.captureVideoPreviewLayer metadataOutputRectOfInterestForRect:self.scanRect];
+    } else {
+        rect = CGRectMake(0, 0, 1, 1); // Default rectOfInterest for AVCaptureMetadataOutput
+    }
+    return rect;
+}
+
+#pragma mark - AVCaptureMetadataOutputObjects Delegate
+
+- (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputMetadataObjects:(NSArray *)metadataObjects fromConnection:(AVCaptureConnection *)connection {
+    
+    NSMutableArray *codes = [[NSMutableArray alloc] init];
+    
+    for (AVMetadataObject *metaData in metadataObjects) {
+        AVMetadataMachineReadableCodeObject *barCodeObject = (AVMetadataMachineReadableCodeObject *)[self.captureVideoPreviewLayer transformedMetadataObjectForMetadataObject:(AVMetadataMachineReadableCodeObject *)metaData];
+        if (barCodeObject) {
+            [codes addObject:barCodeObject];
+        }
+    }
+    
+    self.scanningResultBlock(codes);
+}
 
 #pragma mark - Image Capture
 

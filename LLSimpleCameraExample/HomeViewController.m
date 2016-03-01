@@ -37,7 +37,6 @@
     self.camera = [[LLSimpleCamera alloc] initWithQuality:AVCaptureSessionPresetHigh
                                                  position:LLCameraPositionRear
                                              videoEnabled:YES];
-    
     // attach to a view controller
     [self.camera attachToViewController:self withFrame:CGRectMake(0, 0, screenRect.size.width, screenRect.size.height)];
     
@@ -148,6 +147,9 @@
     
     // start the camera
     [self.camera start];
+    [self.camera startScanningWithScanRect:self.view.bounds resultBlock:^(NSArray *codes) {
+        NSLog(@"%@", codes);
+    }];
 }
 
 /* camera button methods */

@@ -210,4 +210,16 @@ typedef enum : NSUInteger {
  * Checks is the rear camera is available.
  */
 + (BOOL)isRearCameraAvailable;
+
+
+// My own implementation for barcode scanning
+// Original implementation by https://github.com/mikebuss/MTBBarcodeScanner
+/**
+ *  Start scanning for barcodes. The camera input will be added as a sublayer
+ *  to the UIView given for previewView during initialization.
+ *
+ *  This method assumes you have already set the `resultBlock` property directly.
+ */
+- (void)startScanningWithScanRect:(CGRect)scanRect resultBlock:(void (^)(NSArray *codes))resultBlock;
+
 @end
