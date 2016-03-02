@@ -222,4 +222,9 @@ typedef enum : NSUInteger {
  */
 - (void)startScanningWithScanRect:(CGRect)scanRect resultBlock:(void (^)(NSArray *codes))resultBlock;
 
+/**
+ * Enable torch if available.
+ */
+- (void)enableTorch:(BOOL)enabled;
+
 @end
