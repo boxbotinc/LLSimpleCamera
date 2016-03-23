@@ -227,4 +227,6 @@ typedef enum : NSUInteger {
  */
 - (void)enableTorch:(BOOL)enabled;
 
+- (void)focusAtPoint:(CGPoint)point;
+
 @end
